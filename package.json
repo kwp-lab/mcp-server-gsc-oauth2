@@ -11,12 +11,25 @@
   "files": [
     "dist"
   ],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "google-search-console",
+    "gsc",
+    "seo",
+    "search-analytics"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ricardo-nth/mcp-server-gsc"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "tsc --noEmit -p tsconfig.check.json"
+    "lint": "tsc --noEmit -p tsconfig.check.json",
+    "prepublishOnly": "pnpm build && pnpm test"
   },
   "engines": {
     "node": ">=18"
