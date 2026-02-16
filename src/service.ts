@@ -70,7 +70,10 @@ export class SearchConsoleService {
   constructor(credentials: string) {
     this.auth = new google.auth.GoogleAuth({
       keyFile: credentials,
-      scopes: ['https://www.googleapis.com/auth/webmasters.readonly'],
+      scopes: [
+        'https://www.googleapis.com/auth/webmasters',
+        'https://www.googleapis.com/auth/webmasters.readonly',
+      ],
     });
   }
 

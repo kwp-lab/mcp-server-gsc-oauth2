@@ -16,7 +16,7 @@
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit -p tsconfig.check.json"
   },
   "engines": {
     "node": ">=18"

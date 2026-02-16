@@ -21,12 +21,13 @@ describe('Date utilities', () => {
     expect(formatDate(new Date('2025-03-15'))).toBe('2025-03-15');
   });
 
-  it('relativeDateRange returns correct span', () => {
+  it('relativeDateRange returns correct span (days inclusive)', () => {
     const range = relativeDateRange(7);
     const start = new Date(range.startDate);
     const end = new Date(range.endDate);
     const diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
-    expect(diff).toBe(7);
+    // 7 days inclusive = 6 day diff between start and end
+    expect(diff).toBe(6);
   });
 
   it('comparePeriods returns two non-overlapping periods', () => {

@@ -63,6 +63,17 @@ export async function handleComparePeriods(
     searchType: args.type,
   };
 
+  if (args.deviceFilter) {
+    baseBody.dimensionFilterGroups = [
+      {
+        groupType: 'and',
+        filters: [
+          { dimension: 'device', operator: 'equals', expression: args.deviceFilter },
+        ],
+      },
+    ];
+  }
+
   const [resA, resB] = await Promise.all([
     service.searchAnalytics(args.siteUrl, {
       ...baseBody,

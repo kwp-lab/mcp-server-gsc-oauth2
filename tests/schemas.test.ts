@@ -144,11 +144,18 @@ describe('IndexInspectSchema', () => {
 });
 
 describe('Sitemap schemas', () => {
-  it('ListSitemapsSchema accepts empty input', () => {
-    expect(() => ListSitemapsSchema.parse({})).not.toThrow();
+  it('ListSitemapsSchema requires siteUrl', () => {
+    expect(() => ListSitemapsSchema.parse({})).toThrow();
+    expect(() =>
+      ListSitemapsSchema.parse({ siteUrl: 'https://example.com/' }),
+    ).not.toThrow();
   });
 
-  it('GetSitemapSchema accepts optional fields', () => {
+  it('GetSitemapSchema requires siteUrl and feedpath', () => {
+    expect(() => GetSitemapSchema.parse({})).toThrow();
+    expect(() =>
+      GetSitemapSchema.parse({ siteUrl: 'https://example.com/' }),
+    ).toThrow();
     const result = GetSitemapSchema.parse({
       siteUrl: 'https://example.com/',
       feedpath: 'https://example.com/sitemap.xml',

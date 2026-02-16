@@ -12,6 +12,7 @@ export function daysAgo(n: number, from?: Date): Date {
 
 /**
  * Compute a relative date range ending yesterday (GSC data lag).
+ * `days: 7` means 7 calendar days inclusive (e.g. Jan 8–Jan 14).
  * Returns { startDate, endDate } as YYYY-MM-DD strings.
  */
 export function relativeDateRange(days: number): {
@@ -19,7 +20,7 @@ export function relativeDateRange(days: number): {
   endDate: string;
 } {
   const end = daysAgo(1); // yesterday — GSC data lag
-  const start = daysAgo(days, end);
+  const start = daysAgo(days - 1, end); // -1 because both endpoints are inclusive
   return { startDate: formatDate(start), endDate: formatDate(end) };
 }
 

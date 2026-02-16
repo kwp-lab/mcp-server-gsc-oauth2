@@ -4,7 +4,6 @@ import { z } from 'zod';
 export const ListSitemapsSchema = z.object({
   siteUrl: z
     .string()
-    .optional()
     .describe("Site URL including protocol, e.g. https://www.example.com/"),
   sitemapIndex: z
     .string()
@@ -16,11 +15,9 @@ export const ListSitemapsSchema = z.object({
 export const GetSitemapSchema = z.object({
   siteUrl: z
     .string()
-    .optional()
     .describe("Site URL including protocol"),
   feedpath: z
     .string()
-    .optional()
     .describe('URL of the sitemap, e.g. https://www.example.com/sitemap.xml'),
 });
 
