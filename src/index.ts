@@ -25,6 +25,15 @@ import {
   SubmitSitemapSchema,
   DeleteSitemapSchema,
 } from './schemas/sitemaps.js';
+import {
+  ComparePeriodsSchema,
+  ContentDecaySchema,
+  CannibalizationSchema,
+  DiffKeywordsSchema,
+  BatchInspectSchema,
+  CtrAnalysisSchema,
+  SearchTypeBreakdownSchema,
+} from './schemas/computed.js';
 
 // Tool handlers
 import {
@@ -40,6 +49,15 @@ import {
   handleSubmitSitemap,
   handleDeleteSitemap,
 } from './tools/sitemaps.js';
+import {
+  handleComparePeriods,
+  handleContentDecay,
+  handleCannibalization,
+  handleDiffKeywords,
+  handleBatchInspect,
+  handleCtrAnalysis,
+  handleSearchTypeBreakdown,
+} from './tools/computed.js';
 
 // ---------------------------------------------------------------------------
 // Environment
@@ -116,6 +134,49 @@ const TOOLS = [
     description: 'Delete a sitemap from Google Search Console',
     inputSchema: zodToJsonSchema(DeleteSitemapSchema),
   },
+  // --- Computed intelligence tools ---
+  {
+    name: 'compare_periods',
+    description:
+      'Compare two time periods side-by-side with delta and % change for clicks, impressions, CTR, and position',
+    inputSchema: zodToJsonSchema(ComparePeriodsSchema),
+  },
+  {
+    name: 'detect_content_decay',
+    description:
+      'Find pages losing clicks over time by comparing recent vs earlier performance, sorted by traffic loss',
+    inputSchema: zodToJsonSchema(ContentDecaySchema),
+  },
+  {
+    name: 'detect_cannibalization',
+    description:
+      'Find queries where multiple pages compete for the same keyword, with position variance analysis',
+    inputSchema: zodToJsonSchema(CannibalizationSchema),
+  },
+  {
+    name: 'diff_keywords',
+    description:
+      'Discover new and lost keywords by comparing two time periods',
+    inputSchema: zodToJsonSchema(DiffKeywordsSchema),
+  },
+  {
+    name: 'batch_inspect',
+    description:
+      'Inspect multiple URLs for indexing status (rate-limited to 1/sec, max 100 URLs)',
+    inputSchema: zodToJsonSchema(BatchInspectSchema),
+  },
+  {
+    name: 'ctr_analysis',
+    description:
+      'Analyze CTR vs position benchmarks to find underperforming queries that could benefit from title/description optimization',
+    inputSchema: zodToJsonSchema(CtrAnalysisSchema),
+  },
+  {
+    name: 'search_type_breakdown',
+    description:
+      'Compare performance across search types (web, image, video, discover, news) in a single call',
+    inputSchema: zodToJsonSchema(SearchTypeBreakdownSchema),
+  },
 ] as const;
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -155,6 +216,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleSubmitSitemap(service, args);
       case 'delete_sitemap':
         return await handleDeleteSitemap(service, args);
+      // Computed intelligence tools
+      case 'compare_periods':
+        return await handleComparePeriods(service, args);
+      case 'detect_content_decay':
+        return await handleContentDecay(service, args);
+      case 'detect_cannibalization':
+        return await handleCannibalization(service, args);
+      case 'diff_keywords':
+        return await handleDiffKeywords(service, args);
+      case 'batch_inspect':
+        return await handleBatchInspect(service, args);
+      case 'ctr_analysis':
+        return await handleCtrAnalysis(service, args);
+      case 'search_type_breakdown':
+        return await handleSearchTypeBreakdown(service, args);
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
