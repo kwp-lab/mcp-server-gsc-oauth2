@@ -2,382 +2,261 @@
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-// @ts-ignore
-import { zodToJsonSchema } from 'zod-to-json-schema';
 import {
-  GetSitemapSchema,
-  IndexInspectSchema,
-  ListSitemapsSchema,
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
+import { z } from 'zod';
+// @ts-ignore — no types shipped
+import { zodToJsonSchema } from 'zod-to-json-schema';
+
+import { SearchConsoleService } from './service.js';
+
+// Schemas
+import {
   SearchAnalyticsSchema,
   EnhancedSearchAnalyticsSchema,
-  QuickWinsDetectionSchema,
+  QuickWinsSchema,
+} from './schemas/analytics.js';
+import { IndexInspectSchema } from './schemas/inspection.js';
+import {
+  ListSitemapsSchema,
+  GetSitemapSchema,
   SubmitSitemapSchema,
-} from './schemas.js';
-import { z } from 'zod';
-import { SearchConsoleService } from './search-console.js';
+  DeleteSitemapSchema,
+} from './schemas/sitemaps.js';
+import {
+  ComparePeriodsSchema,
+  ContentDecaySchema,
+  CannibalizationSchema,
+  DiffKeywordsSchema,
+  BatchInspectSchema,
+  CtrAnalysisSchema,
+  SearchTypeBreakdownSchema,
+} from './schemas/computed.js';
 
-const server = new Server(
-  {
-    name: 'gsc-mcp-server-enhanced',
-    version: '0.2.0',
-  },
-  {
-    capabilities: {
-      resources: {},
-      tools: {},
-      prompts: {},
-    },
-  },
-);
+// Tool handlers
+import {
+  handleListSites,
+  handleSearchAnalytics,
+  handleEnhancedSearchAnalytics,
+  handleDetectQuickWins,
+} from './tools/analytics.js';
+import { handleIndexInspect } from './tools/inspection.js';
+import {
+  handleListSitemaps,
+  handleGetSitemap,
+  handleSubmitSitemap,
+  handleDeleteSitemap,
+} from './tools/sitemaps.js';
+import {
+  handleComparePeriods,
+  handleContentDecay,
+  handleCannibalization,
+  handleDiffKeywords,
+  handleBatchInspect,
+  handleCtrAnalysis,
+  handleSearchTypeBreakdown,
+} from './tools/computed.js';
+
+// ---------------------------------------------------------------------------
+// Environment
+// ---------------------------------------------------------------------------
 
 const GOOGLE_APPLICATION_CREDENTIALS = process.env.GOOGLE_APPLICATION_CREDENTIALS;
 if (!GOOGLE_APPLICATION_CREDENTIALS) {
-  console.error('GOOGLE_APPLICATION_CREDENTIALS environment variable is required');
+  console.error(
+    'GOOGLE_APPLICATION_CREDENTIALS environment variable is required',
+  );
   process.exit(1);
 }
 
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return {
-    tools: [
-      {
-        name: 'list_sites',
-        description: 'List all sites in Google Search Console',
-        inputSchema: zodToJsonSchema(z.object({})),
-      },
-      {
-        name: 'search_analytics',
-        description: 'Get search performance data from Google Search Console',
-        inputSchema: zodToJsonSchema(SearchAnalyticsSchema),
-      },
-      {
-        name: 'enhanced_search_analytics',
-        description: 'Enhanced search analytics with up to 25,000 rows, regex filters, and quick wins detection',
-        inputSchema: zodToJsonSchema(EnhancedSearchAnalyticsSchema),
-      },
-      {
-        name: 'detect_quick_wins',
-        description: 'Automatically detect SEO quick wins and optimization opportunities',
-        inputSchema: zodToJsonSchema(QuickWinsDetectionSchema),
-      },
-      {
-        name: 'index_inspect',
-        description: 'Inspect a URL to see if it is indexed or can be indexed',
-        inputSchema: zodToJsonSchema(IndexInspectSchema),
-      },
-      {
-        name: 'list_sitemaps',
-        description: 'List sitemaps for a site in Google Search Console',
-        inputSchema: zodToJsonSchema(ListSitemapsSchema),
-      },
-      {
-        name: 'get_sitemap',
-        description: 'Get a sitemap for a site in Google Search Console',
-        inputSchema: zodToJsonSchema(GetSitemapSchema),
-      },
-      {
-        name: 'submit_sitemap',
-        description: 'Submit a sitemap for a site in Google Search Console',
-        inputSchema: zodToJsonSchema(SubmitSitemapSchema),
-      },
-    ],
-  };
-});
+// ---------------------------------------------------------------------------
+// Server
+// ---------------------------------------------------------------------------
+
+const server = new Server(
+  { name: 'mcp-server-gsc-pro', version: '1.0.0' },
+  { capabilities: { tools: {} } },
+);
+
+// ---------------------------------------------------------------------------
+// Tool definitions
+// ---------------------------------------------------------------------------
+
+const TOOLS = [
+  {
+    name: 'list_sites',
+    description: 'List all sites available in Google Search Console',
+    inputSchema: zodToJsonSchema(z.object({})),
+  },
+  {
+    name: 'search_analytics',
+    description:
+      'Query search performance data (clicks, impressions, CTR, position) with filtering by page, query, country, device, and search type',
+    inputSchema: zodToJsonSchema(SearchAnalyticsSchema),
+  },
+  {
+    name: 'enhanced_search_analytics',
+    description:
+      'Advanced search analytics with regex filters, up to 25K rows, and optional quick-wins detection',
+    inputSchema: zodToJsonSchema(EnhancedSearchAnalyticsSchema),
+  },
+  {
+    name: 'detect_quick_wins',
+    description:
+      'Find SEO quick-win opportunities: high-impression, low-CTR queries in striking distance (positions 4-10)',
+    inputSchema: zodToJsonSchema(QuickWinsSchema),
+  },
+  {
+    name: 'index_inspect',
+    description:
+      'Inspect a URL for indexing status, crawl info, mobile usability, and rich results',
+    inputSchema: zodToJsonSchema(IndexInspectSchema),
+  },
+  {
+    name: 'list_sitemaps',
+    description: 'List all sitemaps submitted for a site',
+    inputSchema: zodToJsonSchema(ListSitemapsSchema),
+  },
+  {
+    name: 'get_sitemap',
+    description: 'Get details of a specific sitemap',
+    inputSchema: zodToJsonSchema(GetSitemapSchema),
+  },
+  {
+    name: 'submit_sitemap',
+    description: 'Submit a new sitemap to Google Search Console',
+    inputSchema: zodToJsonSchema(SubmitSitemapSchema),
+  },
+  {
+    name: 'delete_sitemap',
+    description: 'Delete a sitemap from Google Search Console',
+    inputSchema: zodToJsonSchema(DeleteSitemapSchema),
+  },
+  // --- Computed intelligence tools ---
+  {
+    name: 'compare_periods',
+    description:
+      'Compare two time periods side-by-side with delta and % change for clicks, impressions, CTR, and position',
+    inputSchema: zodToJsonSchema(ComparePeriodsSchema),
+  },
+  {
+    name: 'detect_content_decay',
+    description:
+      'Find pages losing clicks over time by comparing recent vs earlier performance, sorted by traffic loss',
+    inputSchema: zodToJsonSchema(ContentDecaySchema),
+  },
+  {
+    name: 'detect_cannibalization',
+    description:
+      'Find queries where multiple pages compete for the same keyword, with position variance analysis',
+    inputSchema: zodToJsonSchema(CannibalizationSchema),
+  },
+  {
+    name: 'diff_keywords',
+    description:
+      'Discover new and lost keywords by comparing two time periods',
+    inputSchema: zodToJsonSchema(DiffKeywordsSchema),
+  },
+  {
+    name: 'batch_inspect',
+    description:
+      'Inspect multiple URLs for indexing status (rate-limited to 1/sec, max 100 URLs)',
+    inputSchema: zodToJsonSchema(BatchInspectSchema),
+  },
+  {
+    name: 'ctr_analysis',
+    description:
+      'Analyze CTR vs position benchmarks to find underperforming queries that could benefit from title/description optimization',
+    inputSchema: zodToJsonSchema(CtrAnalysisSchema),
+  },
+  {
+    name: 'search_type_breakdown',
+    description:
+      'Compare performance across search types (web, image, video, discover, news) in a single call',
+    inputSchema: zodToJsonSchema(SearchTypeBreakdownSchema),
+  },
+] as const;
+
+server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  tools: [...TOOLS],
+}));
+
+// ---------------------------------------------------------------------------
+// Tool dispatch
+// ---------------------------------------------------------------------------
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const { name, arguments: args } = request.params;
+
+  if (!args && name !== 'list_sites') {
+    throw new Error('Arguments are required');
+  }
+
+  const service = new SearchConsoleService(GOOGLE_APPLICATION_CREDENTIALS);
+
   try {
-    if (!request.params.arguments) {
-      throw new Error('Arguments are required');
-    }
-
-    const searchConsole = new SearchConsoleService(GOOGLE_APPLICATION_CREDENTIALS);
-
-    switch (request.params.name) {
-      case 'enhanced_search_analytics': {
-        const args = EnhancedSearchAnalyticsSchema.parse(request.params.arguments);
-        const siteUrl = args.siteUrl;
-
-        // Build enhanced request body
-        const requestBody: any = {
-          startDate: args.startDate,
-          endDate: args.endDate,
-          dimensions: args.dimensions,
-          searchType: args.type,
-          aggregationType: args.aggregationType,
-          rowLimit: args.rowLimit, // Up to 25,000!
-        };
-
-        // Build filters (including regex support)
-        const filters = [];
-        if (args.pageFilter) {
-          filters.push({
-            dimension: 'page',
-            operator: args.filterOperator,
-            expression: args.pageFilter,
-          });
-        }
-        if (args.queryFilter) {
-          filters.push({
-            dimension: 'query',
-            operator: args.filterOperator,
-            expression: args.queryFilter,
-          });
-        }
-        if (args.countryFilter) {
-          filters.push({
-            dimension: 'country',
-            operator: 'equals',
-            expression: args.countryFilter,
-          });
-        }
-        if (args.deviceFilter) {
-          filters.push({
-            dimension: 'device',
-            operator: 'equals',
-            expression: args.deviceFilter,
-          });
-        }
-
-        if (filters.length > 0) {
-          requestBody.dimensionFilterGroups = [{ groupType: 'and', filters }];
-        }
-
-        // Call enhanced search analytics
-        const enhancedOptions = {
-          regexFilter: args.regexFilter,
-          enableQuickWins: args.enableQuickWins,
-          quickWinsThresholds: args.quickWinsThresholds,
-        };
-
-        const response = await searchConsole.enhancedSearchAnalytics(siteUrl, requestBody, enhancedOptions);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(response.data, null, 2),
-            },
-          ],
-        };
-      }
-
-      case 'detect_quick_wins': {
-        const args = QuickWinsDetectionSchema.parse(request.params.arguments);
-        
-        // First get search analytics data
-        const requestBody: any = {
-          startDate: args.startDate,
-          endDate: args.endDate,
-          dimensions: ['query', 'page'],
-          rowLimit: 25000, // Maximum for comprehensive analysis
-        };
-
-        const searchResponse = await searchConsole.searchAnalytics(args.siteUrl, requestBody);
-        
-        if (!searchResponse.data.rows) {
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify({ message: 'No data available for quick wins analysis' }, null, 2),
-              },
-            ],
-          };
-        }
-
-        // Apply quick wins detection
-        const quickWinsOptions = {
-          enableQuickWins: true,
-          quickWinsThresholds: {
-            minImpressions: args.minImpressions,
-            maxCtr: args.maxCtr,
-            positionRangeMin: args.positionRangeMin,
-            positionRangeMax: args.positionRangeMax,
-          },
-        };
-
-        const enhancedResult = await searchConsole.enhancedSearchAnalytics(
-          args.siteUrl, 
-          requestBody, 
-          quickWinsOptions
-        );
-
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                quickWins: (enhancedResult.data as any).quickWins,
-                totalOpportunities: (enhancedResult.data as any).quickWins?.length || 0,
-                thresholds: quickWinsOptions.quickWinsThresholds,
-                analysis: 'Quick wins detection completed'
-              }, null, 2),
-            },
-          ],
-        };
-      }
-
-      case 'search_analytics': {
-        const args = SearchAnalyticsSchema.parse(request.params.arguments);
-        const siteUrl = args.siteUrl;
-
-        // --- 动态构建请求体 ---
-        const requestBody: any = {
-          startDate: args.startDate,
-          endDate: args.endDate,
-          dimensions: args.dimensions,
-          searchType: args.type,
-          aggregationType: args.aggregationType,
-          rowLimit: args.rowLimit,
-        };
-
-        const filters = [];
-        if (args.pageFilter) {
-          filters.push({
-            dimension: 'page',
-            operator: args.filterOperator,
-            expression: args.pageFilter,
-          });
-        }
-        if (args.queryFilter) {
-          filters.push({
-            dimension: 'query',
-            operator: args.filterOperator,
-            expression: args.queryFilter,
-          });
-        }
-        if (args.countryFilter) {
-            filters.push({
-              dimension: 'country',
-              operator: 'equals', // Country filter only supports 'equals'
-              expression: args.countryFilter,
-            });
-        }
-        if (args.deviceFilter) {
-            filters.push({
-              dimension: 'device',
-              operator: 'equals', // Device filter only supports 'equals'
-              expression: args.deviceFilter,
-            });
-        }
-
-        if (filters.length > 0) {
-          requestBody.dimensionFilterGroups = [{ filters }];
-        }
-        // --- 构建结束 ---
-
-        const response = await searchConsole.searchAnalytics(siteUrl, requestBody);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(response.data, null, 2),
-            },
-          ],
-        };
-      }
-
-      case 'list_sites': {
-        const response = await searchConsole.listSites();
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(response.data, null, 2),
-            },
-          ],
-        };
-      }
-
-      case 'index_inspect': {
-        const args = IndexInspectSchema.parse(request.params.arguments);
-        const requestBody = {
-          siteUrl: args.siteUrl,
-          inspectionUrl: args.inspectionUrl,
-          languageCode: args.languageCode,
-        };
-        const response = await searchConsole.indexInspect(requestBody);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(response.data, null, 2),
-            },
-          ],
-        };
-      }
-
-      case 'list_sitemaps': {
-        const args = ListSitemapsSchema.parse(request.params.arguments);
-        const requestBody = {
-          siteUrl: args.siteUrl,
-          sitemapIndex: args.sitemapIndex,
-        };
-        const response = await searchConsole.listSitemaps(requestBody);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(response.data, null, 2),
-            },
-          ],
-        };
-      }
-
-      case 'get_sitemap': {
-        const args = GetSitemapSchema.parse(request.params.arguments);
-        const requestBody = {
-          siteUrl: args.siteUrl,
-          feedpath: args.feedpath,
-        };
-        const response = await searchConsole.getSitemap(requestBody);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(response.data, null, 2),
-            },
-          ],
-        };
-      }
-
-      case 'submit_sitemap': {
-        const args = SubmitSitemapSchema.parse(request.params.arguments);
-        const requestBody = {
-          siteUrl: args.siteUrl,
-          feedpath: args.feedpath,
-        };
-        const response = await searchConsole.submitSitemap(requestBody);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(response.data, null, 2),
-            },
-          ],
-        };
-      }
-
+    switch (name) {
+      case 'list_sites':
+        return await handleListSites(service);
+      case 'search_analytics':
+        return await handleSearchAnalytics(service, args);
+      case 'enhanced_search_analytics':
+        return await handleEnhancedSearchAnalytics(service, args);
+      case 'detect_quick_wins':
+        return await handleDetectQuickWins(service, args);
+      case 'index_inspect':
+        return await handleIndexInspect(service, args);
+      case 'list_sitemaps':
+        return await handleListSitemaps(service, args);
+      case 'get_sitemap':
+        return await handleGetSitemap(service, args);
+      case 'submit_sitemap':
+        return await handleSubmitSitemap(service, args);
+      case 'delete_sitemap':
+        return await handleDeleteSitemap(service, args);
+      // Computed intelligence tools
+      case 'compare_periods':
+        return await handleComparePeriods(service, args);
+      case 'detect_content_decay':
+        return await handleContentDecay(service, args);
+      case 'detect_cannibalization':
+        return await handleCannibalization(service, args);
+      case 'diff_keywords':
+        return await handleDiffKeywords(service, args);
+      case 'batch_inspect':
+        return await handleBatchInspect(service, args);
+      case 'ctr_analysis':
+        return await handleCtrAnalysis(service, args);
+      case 'search_type_breakdown':
+        return await handleSearchTypeBreakdown(service, args);
       default:
-        throw new Error(`Unknown tool: ${request.params.name}`);
+        throw new Error(`Unknown tool: ${name}`);
     }
   } catch (error) {
-    console.error(error);
     if (error instanceof z.ZodError) {
       throw new Error(
-        `Invalid arguments: ${error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+        `Invalid arguments: ${error.errors
+          .map((e) => `${e.path.join('.')}: ${e.message}`)
+          .join(', ')}`,
       );
     }
     throw error;
   }
 });
 
-async function runServer() {
+// ---------------------------------------------------------------------------
+// Start
+// ---------------------------------------------------------------------------
+
+async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('Google Search Console MCP Server running on stdio');
+  console.error('mcp-server-gsc-pro running on stdio');
 }
 
-runServer().catch((error) => {
-  console.error('Fatal error in main():', error);
+main().catch((error) => {
+  console.error('Fatal error:', error);
   process.exit(1);
 });
