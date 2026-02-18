@@ -4,7 +4,7 @@ Enhanced MCP server for Google Search Console. All original functionality from [
 
 ## What's different
 
-- **26 tools** (vs 8 original) — GSC analytics + computed intelligence + PageSpeed Insights + Indexing API + CrUX web vitals + mobile-friendly testing
+- **31 tools** (vs 8 original) — GSC analytics + computed intelligence + PageSpeed Insights + Indexing API + CrUX web vitals + mobile-friendly testing
 - **Fresh data** — `dataState: "all"` for data within hours, not days
 - **More search types** — `discover`, `googleNews` alongside web/image/video/news
 - **Auto-retry** — exponential backoff with jitter on 429/5xx
@@ -92,6 +92,16 @@ Or run from source:
 | `batch_inspect` | Inspect up to 100 URLs (rate-limited 1/sec) |
 | `ctr_analysis` | CTR vs position benchmarks, find underperformers |
 | `search_type_breakdown` | Compare web/image/video/discover/news |
+
+### Multi-API Intelligence
+
+| Tool | Description |
+|------|-------------|
+| `page_health_dashboard` | Unified page report: inspection + analytics + PageSpeed + CrUX |
+| `indexing_health_report` | Batch indexing status for top pages with coverage stats |
+| `serp_feature_tracking` | Monitor search appearance trends over time |
+| `cannibalization_resolver` | Detect cannibalization + recommend redirect/consolidate/differentiate |
+| `drop_alerts` | Automated traffic/position drop detection with configurable thresholds |
 
 ### Adjacent APIs
 
