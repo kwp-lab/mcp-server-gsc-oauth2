@@ -1,4 +1,11 @@
-import { google, searchconsole_v1, webmasters_v3 } from 'googleapis';
+import {
+  google,
+  searchconsole_v1,
+  webmasters_v3,
+  indexing_v3,
+  pagespeedonline_v5,
+  chromeuxreport_v1,
+} from 'googleapis';
 import { GoogleAuth } from 'google-auth-library';
 import { withRetry } from './utils/retry.js';
 
@@ -66,13 +73,16 @@ export class GSCPermissionError extends GSCError {
 
 export class SearchConsoleService {
   private auth: GoogleAuth;
+  private apiKey?: string;
 
-  constructor(credentials: string) {
+  constructor(credentials: string, apiKey?: string) {
+    this.apiKey = apiKey;
     this.auth = new google.auth.GoogleAuth({
       keyFile: credentials,
       scopes: [
         'https://www.googleapis.com/auth/webmasters',
         'https://www.googleapis.com/auth/webmasters.readonly',
+        'https://www.googleapis.com/auth/indexing',
       ],
     });
   }
@@ -91,6 +101,28 @@ export class SearchConsoleService {
       version: 'v1',
       auth: authClient,
     } as searchconsole_v1.Options);
+  }
+
+  private async getIndexing() {
+    const authClient = await this.auth.getClient();
+    return google.indexing({
+      version: 'v3',
+      auth: authClient,
+    } as indexing_v3.Options);
+  }
+
+  private getPageSpeed() {
+    return google.pagespeedonline({ version: 'v5' } as pagespeedonline_v5.Options);
+  }
+
+  private getCrUX() {
+    if (!this.apiKey) {
+      throw new GSCError(
+        'GOOGLE_CLOUD_API_KEY environment variable is required for CrUX API tools.',
+        'CONFIG_ERROR',
+      );
+    }
+    return google.chromeuxreport({ version: 'v1' } as chromeuxreport_v1.Options);
   }
 
   private normalizeUrl(url: string): string {
@@ -159,6 +191,39 @@ export class SearchConsoleService {
     });
   }
 
+  async getSite(siteUrl: string) {
+    return withRetry(async () => {
+      const wm = await this.getWebmasters();
+      return this.withPermissionFallback(
+        () => wm.sites.get({ siteUrl }),
+        () => wm.sites.get({ siteUrl: this.normalizeUrl(siteUrl) }),
+        siteUrl,
+      );
+    });
+  }
+
+  async addSite(siteUrl: string) {
+    return withRetry(async () => {
+      const wm = await this.getWebmasters();
+      return this.withPermissionFallback(
+        () => wm.sites.add({ siteUrl }),
+        () => wm.sites.add({ siteUrl: this.normalizeUrl(siteUrl) }),
+        siteUrl,
+      );
+    });
+  }
+
+  async deleteSite(siteUrl: string) {
+    return withRetry(async () => {
+      const wm = await this.getWebmasters();
+      return this.withPermissionFallback(
+        () => wm.sites.delete({ siteUrl }),
+        () => wm.sites.delete({ siteUrl: this.normalizeUrl(siteUrl) }),
+        siteUrl,
+      );
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Search Analytics
   // ---------------------------------------------------------------------------
@@ -186,6 +251,128 @@ export class SearchConsoleService {
     return withRetry(async () => {
       const sc = await this.getSearchConsole();
       return sc.urlInspection.index.inspect({ requestBody: body });
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Mobile-Friendly Test
+  // ---------------------------------------------------------------------------
+
+  async mobileFriendlyTest(url: string, requestScreenshot?: boolean) {
+    return withRetry(async () => {
+      try {
+        const sc = await this.getSearchConsole();
+        return await sc.urlTestingTools.mobileFriendlyTest.run({
+          requestBody: { url, requestScreenshot: requestScreenshot ?? false },
+        });
+      } catch (err) {
+        this.classifyError(err, url);
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // PageSpeed Insights (no auth required)
+  // ---------------------------------------------------------------------------
+
+  async runPageSpeed(params: {
+    url: string;
+    categories?: string[];
+    strategy?: string;
+    locale?: string;
+  }) {
+    return withRetry(async () => {
+      try {
+        const psi = this.getPageSpeed();
+        return await psi.pagespeedapi.runpagespeed({
+          url: params.url,
+          category: params.categories,
+          strategy: params.strategy,
+          locale: params.locale,
+        });
+      } catch (err) {
+        this.classifyError(err, params.url);
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Indexing API
+  // ---------------------------------------------------------------------------
+
+  async indexingPublish(url: string, type: 'URL_UPDATED' | 'URL_DELETED') {
+    return withRetry(async () => {
+      try {
+        const idx = await this.getIndexing();
+        return await idx.urlNotifications.publish({
+          requestBody: { url, type },
+        });
+      } catch (err) {
+        this.classifyError(err, url);
+      }
+    });
+  }
+
+  async indexingGetMetadata(url: string) {
+    return withRetry(async () => {
+      try {
+        const idx = await this.getIndexing();
+        return await idx.urlNotifications.getMetadata({ url });
+      } catch (err) {
+        this.classifyError(err, url);
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Chrome UX Report (CrUX)
+  // ---------------------------------------------------------------------------
+
+  async cruxQueryRecord(params: {
+    url?: string;
+    origin?: string;
+    formFactor?: string;
+    metrics?: string[];
+  }) {
+    return withRetry(async () => {
+      try {
+        const crux = this.getCrUX();
+        return await crux.records.queryRecord({
+          key: this.apiKey,
+          requestBody: {
+            url: params.url,
+            origin: params.origin,
+            formFactor: params.formFactor,
+            metrics: params.metrics,
+          },
+        });
+      } catch (err) {
+        this.classifyError(err);
+      }
+    });
+  }
+
+  async cruxQueryHistory(params: {
+    url?: string;
+    origin?: string;
+    formFactor?: string;
+    metrics?: string[];
+  }) {
+    return withRetry(async () => {
+      try {
+        const crux = this.getCrUX();
+        return await crux.records.queryHistoryRecord({
+          key: this.apiKey,
+          requestBody: {
+            url: params.url,
+            origin: params.origin,
+            formFactor: params.formFactor,
+            metrics: params.metrics,
+          },
+        });
+      } catch (err) {
+        this.classifyError(err);
+      }
     });
   }
 
