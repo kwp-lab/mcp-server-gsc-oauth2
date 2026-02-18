@@ -5,12 +5,14 @@ const CRUX_METRICS = [
   'first_contentful_paint',
   'largest_contentful_paint',
   'cumulative_layout_shift',
-  'experimental_interaction_to_next_paint',
+  'interaction_to_next_paint',
   'experimental_time_to_first_byte',
-  'first_input_delay',
+  'round_trip_time',
+  'form_factors',
+  'navigation_types',
 ] as const;
 
-const CrUXBaseSchema = z.object({
+const cruxFields = {
   url: z
     .string()
     .optional()
@@ -26,17 +28,17 @@ const CrUXBaseSchema = z.object({
   metrics: z
     .array(z.enum(CRUX_METRICS))
     .optional()
-    .describe('Specific metrics to return. Omit for all available metrics. Options: first_contentful_paint, largest_contentful_paint, cumulative_layout_shift, experimental_interaction_to_next_paint, experimental_time_to_first_byte, first_input_delay'),
-}).refine(
-  (data) => data.url || data.origin,
-  { message: 'Either "url" or "origin" must be provided' },
-);
+    .describe('Specific metrics to return. Omit for all available metrics.'),
+};
+
+const cruxRefine = (data: { url?: string; origin?: string }) => data.url || data.origin;
+const cruxRefineMessage = { message: 'Either "url" or "origin" must be provided' };
 
 /** crux_query tool schema */
-export const CrUXQuerySchema = CrUXBaseSchema;
+export const CrUXQuerySchema = z.object(cruxFields).refine(cruxRefine, cruxRefineMessage);
 
 /** crux_history tool schema */
-export const CrUXHistorySchema = CrUXBaseSchema;
+export const CrUXHistorySchema = z.object(cruxFields).refine(cruxRefine, cruxRefineMessage);
 
 export type CrUXQueryInput = z.infer<typeof CrUXQuerySchema>;
 export type CrUXHistoryInput = z.infer<typeof CrUXHistorySchema>;

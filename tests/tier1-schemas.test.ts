@@ -91,6 +91,14 @@ describe('IndexingPublishSchema', () => {
       IndexingPublishSchema.parse({ url: 'https://example.com/page', type: 'INVALID' }),
     ).toThrow();
   });
+
+  it('rejects non-URL strings', () => {
+    expect(() => IndexingPublishSchema.parse({ url: 'not-a-url' })).toThrow(/fully-qualified URL/);
+  });
+
+  it('rejects bare paths', () => {
+    expect(() => IndexingPublishSchema.parse({ url: '/page/path' })).toThrow();
+  });
 });
 
 describe('IndexingStatusSchema', () => {
@@ -98,6 +106,10 @@ describe('IndexingStatusSchema', () => {
     expect(() => IndexingStatusSchema.parse({})).toThrow();
     const result = IndexingStatusSchema.parse({ url: 'https://example.com/page' });
     expect(result.url).toBe('https://example.com/page');
+  });
+
+  it('rejects non-URL strings', () => {
+    expect(() => IndexingStatusSchema.parse({ url: 'not-a-url' })).toThrow(/fully-qualified URL/);
   });
 });
 
@@ -138,5 +150,44 @@ describe('CrUX schemas', () => {
       metrics: ['largest_contentful_paint', 'cumulative_layout_shift'],
     });
     expect(result.metrics).toHaveLength(2);
+  });
+
+  it('accepts stable interaction_to_next_paint metric name', () => {
+    const result = CrUXQuerySchema.parse({
+      url: 'https://example.com/',
+      metrics: ['interaction_to_next_paint'],
+    });
+    expect(result.metrics).toEqual(['interaction_to_next_paint']);
+  });
+
+  it('rejects deprecated experimental_interaction_to_next_paint', () => {
+    expect(() =>
+      CrUXQuerySchema.parse({
+        url: 'https://example.com/',
+        metrics: ['experimental_interaction_to_next_paint'],
+      }),
+    ).toThrow();
+  });
+
+  it('rejects deprecated first_input_delay', () => {
+    expect(() =>
+      CrUXQuerySchema.parse({
+        url: 'https://example.com/',
+        metrics: ['first_input_delay'],
+      }),
+    ).toThrow();
+  });
+
+  it('accepts newer metrics (round_trip_time, navigation_types, form_factors)', () => {
+    const result = CrUXQuerySchema.parse({
+      origin: 'https://example.com',
+      metrics: ['round_trip_time', 'navigation_types', 'form_factors'],
+    });
+    expect(result.metrics).toHaveLength(3);
+  });
+
+  it('CrUXQuerySchema and CrUXHistorySchema are independent objects', () => {
+    // They should parse identically but not be the same reference
+    expect(CrUXQuerySchema).not.toBe(CrUXHistorySchema);
   });
 });

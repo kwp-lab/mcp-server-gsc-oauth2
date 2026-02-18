@@ -6,6 +6,7 @@ const NOTIFICATION_TYPES = ['URL_UPDATED', 'URL_DELETED'] as const;
 export const IndexingPublishSchema = z.object({
   url: z
     .string()
+    .url('Must be a fully-qualified URL (e.g. https://example.com/page)')
     .describe('The fully-qualified URL to notify Google about'),
   type: z
     .enum(NOTIFICATION_TYPES)
@@ -18,6 +19,7 @@ export const IndexingPublishSchema = z.object({
 export const IndexingStatusSchema = z.object({
   url: z
     .string()
+    .url('Must be a fully-qualified URL (e.g. https://example.com/page)')
     .describe('The URL to get indexing notification metadata for. Must have been previously submitted via the Indexing API.'),
 });
 
