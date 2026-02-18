@@ -8,6 +8,7 @@ const PSI_STRATEGIES = ['mobile', 'desktop'] as const;
 export const PageHealthDashboardSchema = SiteUrlSchema.merge(DateRangeSchema).extend({
   url: z
     .string()
+    .url('Must be a fully-qualified URL (e.g. https://example.com/page)')
     .describe('The specific page URL to check (full URL including protocol)'),
   strategy: z
     .enum(PSI_STRATEGIES)
