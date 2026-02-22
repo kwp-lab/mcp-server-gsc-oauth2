@@ -1,6 +1,6 @@
 {
   "name": "mcp-server-gsc-oauth2",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Enhanced MCP server for Google Search Console — fresh data, hourly analytics, search type filtering, content decay detection, keyword cannibalization, and more",
   "license": "MIT",
   "type": "module",
