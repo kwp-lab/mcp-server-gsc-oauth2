@@ -7,7 +7,7 @@ import {
 
 describe('SearchConsoleService error classification', () => {
   it('runPageSpeed forwards GOOGLE_CLOUD_API_KEY when configured', async () => {
-    const service = new SearchConsoleService('/tmp/fake-creds.json', 'test-api-key');
+    const service = new SearchConsoleService('service_account', '/tmp/fake-creds.json', 'test-api-key');
     const runPageSpeedMock = vi.fn().mockResolvedValue({ data: { id: 'result-id' } });
 
     (service as unknown as { getPageSpeed: () => unknown }).getPageSpeed = () =>
@@ -29,7 +29,7 @@ describe('SearchConsoleService error classification', () => {
   });
 
   it('listSites converts auth failures into GSCAuthError', async () => {
-    const service = new SearchConsoleService('/tmp/fake-creds.json');
+    const service = new SearchConsoleService('service_account', '/tmp/fake-creds.json');
     const authError = Object.assign(new Error('invalid credentials'), {
       code: 401,
     });
@@ -48,7 +48,7 @@ describe('SearchConsoleService error classification', () => {
   });
 
   it('indexInspect converts 403 errors into GSCPermissionError with context', async () => {
-    const service = new SearchConsoleService('/tmp/fake-creds.json');
+    const service = new SearchConsoleService('service_account', '/tmp/fake-creds.json');
     const permissionError = Object.assign(new Error('forbidden'), { code: 403 });
 
     (service as unknown as { getSearchConsole: () => Promise<unknown> }).getSearchConsole =
@@ -72,7 +72,7 @@ describe('SearchConsoleService error classification', () => {
   });
 
   it('indexInspect converts response.status 403 failures into GSCPermissionError', async () => {
-    const service = new SearchConsoleService('/tmp/fake-creds.json');
+    const service = new SearchConsoleService('service_account', '/tmp/fake-creds.json');
     const permissionError = Object.assign(new Error('forbidden'), {
       response: { status: 403 },
     });
@@ -98,7 +98,7 @@ describe('SearchConsoleService error classification', () => {
   });
 
   it('getSite preserves non-permission fallback errors', async () => {
-    const service = new SearchConsoleService('/tmp/fake-creds.json');
+    const service = new SearchConsoleService('service_account', '/tmp/fake-creds.json');
     const fallbackError = Object.assign(new Error('bad request'), { code: 400 });
 
     (service as unknown as { getWebmasters: () => Promise<unknown> }).getWebmasters =
