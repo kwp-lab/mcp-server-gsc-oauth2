@@ -23,9 +23,24 @@ Wraps the full Google Search Console API surface into MCP tools, then adds a lay
 - No Google Ads or GA4 integration
 - Indexing API notifications are officially limited to JobPosting/BroadcastEvent schema types
 
+## 🔐 Authentication Modes
+
+This MCP server supports two authentication modes, controlled by the `GOOGLE_AUTH_MODE` environment variable:
+
+| Mode | Value | Description |
+|------|-------|-------------|
+| **Service Account** | `service_account` (default) | Use a GCP service account JSON key for server-to-server authentication |
+| **OAuth2** | `oauth2` | Use user-authorized OAuth2 tokens to access Search Console on behalf of a user |
+
+---
+
 ## Setup
 
-### 1. Google Service Account (required)
+### Mode 1: Service Account (Default)
+
+Use this mode for server-to-server authentication without user interaction.
+
+#### Setup Steps
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create or select a project
@@ -34,7 +49,197 @@ Wraps the full Google Search Console API surface into MCP tools, then adds a lay
 5. Create a key for the service account (JSON format) and download it
 6. In [Google Search Console](https://search.google.com/search-console/), add the service account email as a user for each property you want to access
 
-### 2. Google Cloud API Key (optional — for CrUX tools)
+#### Environment Variables
+
+```env
+# Optional: defaults to 'service_account'
+GOOGLE_AUTH_MODE=service_account
+
+# Priority 1: Direct JSON string
+GOOGLE_CREDENTIALS='{"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}'
+
+# Priority 2: Path to JSON file (alternative)
+GOOGLE_CREDENTIALS_PATH=/path/to/service-account.json
+
+# Priority 3: Fallback for backward compatibility
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
+```
+
+> **Note**: The server checks environment variables in the priority order listed above. Set only one.
+
+#### Configuration Example
+
+Add to your project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "gsc": {
+      "command": "npx",
+      "args": ["-y", "mcp-server-gsc-pro"],
+      "env": {
+        "GOOGLE_AUTH_MODE": "service_account",
+        "GOOGLE_CREDENTIALS_PATH": "/path/to/service-account.json"
+      }
+    }
+  }
+}
+```
+
+Or using the older variable name (still supported):
+
+```json
+{
+  "mcpServers": {
+    "gsc": {
+      "command": "npx",
+      "args": ["-y", "mcp-server-gsc-pro"],
+      "env": {
+        "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/service-account-key.json"
+      }
+    }
+  }
+}
+```
+
+---
+
+### Mode 2: OAuth2 User Authorization
+
+Use this mode to access Search Console data on behalf of a user with their own permissions.
+
+#### Advantages
+
+- ✅ Access the user's own Search Console properties without service account setup
+- ✅ No need to add service accounts to Search Console property permissions
+- ✅ Works with the user's existing Google account permissions
+
+> ⚠️ **Important**: This MCP server does **NOT** include the OAuth2 authorization flow itself. You need to implement the OAuth2 consent flow separately to obtain the tokens.
+
+#### 1. Implement OAuth2 Authorization Flow (Your Responsibility)
+
+You need to implement the OAuth2 authorization flow using libraries like [`googleapis`](https://www.npmjs.com/package/googleapis).
+
+Required OAuth2 scopes:
+```
+https://www.googleapis.com/auth/webmasters
+https://www.googleapis.com/auth/webmasters.readonly
+https://www.googleapis.com/auth/indexing
+```
+
+Example OAuth2 flow (simplified):
+```javascript
+import { google } from 'googleapis';
+
+const oauth2Client = new google.auth.OAuth2(
+  CLIENT_ID,
+  CLIENT_SECRET,
+  REDIRECT_URI
+);
+
+// Generate auth URL and redirect user
+const authUrl = oauth2Client.generateAuthUrl({
+  access_type: 'offline',  // Important: to get refresh_token
+  scope: [
+    'https://www.googleapis.com/auth/webmasters',
+    'https://www.googleapis.com/auth/webmasters.readonly',
+    'https://www.googleapis.com/auth/indexing'
+  ]
+});
+
+// After user consent, exchange code for tokens
+const { tokens } = await oauth2Client.getToken(code);
+
+// Save tokens to tokens.json
+fs.writeFileSync('tokens.json', JSON.stringify(tokens, null, 2));
+```
+
+#### 2. tokens.json Format
+
+After completing the OAuth2 flow, save the tokens in a `tokens.json` file:
+
+```json
+{
+  "access_token": "ya29.a0AWY7CknXXX...",
+  "refresh_token": "1//0eXXX...",
+  "scope": "https://www.googleapis.com/auth/webmasters ...",
+  "token_type": "Bearer",
+  "expiry_date": 1234567890000
+}
+```
+
+| Field | Description | Required |
+|-------|-------------|----------|
+| `access_token` | The OAuth2 access token | ✅ Yes |
+| `refresh_token` | The refresh token (for auto-renewal) | ⚠️ Recommended |
+| `expiry_date` | Token expiration timestamp in milliseconds | Optional |
+| `scope` | Authorized scopes | Optional |
+| `token_type` | Token type (usually "Bearer") | Optional |
+
+> **Security Note**: Keep `tokens.json` secure and never commit it to version control. Add it to `.gitignore`.
+
+#### 3. Environment Variables
+
+```env
+# Required: Set authentication mode to oauth2
+GOOGLE_AUTH_MODE=oauth2
+
+# Recommended: OAuth2 client credentials (required for automatic token refresh)
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-xxx
+
+# Token source (choose one):
+# Priority 1: Direct JSON string
+GOOGLE_OAUTH2_TOKENS='{"access_token":"ya29...","refresh_token":"1//0e..."}'
+
+# Priority 2: Path to tokens.json
+GOOGLE_OAUTH2_TOKEN_PATH=/path/to/tokens.json
+
+# If neither is set, the server will search for tokens.json in:
+# - ./tokens.json (current directory)
+# - ../tokens.json (parent directory)
+```
+
+> **Important**: Without `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, the server can still work with valid tokens but won't be able to automatically refresh them when they expire. You'll need to manually update the tokens.
+
+#### 4. Configuration Example
+
+Add to your project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "gsc": {
+      "command": "npx",
+      "args": ["-y", "mcp-server-gsc-pro"],
+      "env": {
+        "GOOGLE_AUTH_MODE": "oauth2",
+        "GOOGLE_CLIENT_ID": "xxx.apps.googleusercontent.com",
+        "GOOGLE_CLIENT_SECRET": "GOCSPX-xxx",
+        "GOOGLE_OAUTH2_TOKEN_PATH": "/path/to/tokens.json"
+      }
+    }
+  }
+}
+```
+
+#### 5. Auto Token Refresh
+
+The server automatically refreshes expired access tokens using the refresh token:
+- ✅ Monitors token expiration
+- ✅ Automatically requests new access tokens
+- ✅ Saves updated tokens to file (if using `GOOGLE_OAUTH2_TOKEN_PATH`)
+- ✅ Updates tokens in memory (if using `GOOGLE_OAUTH2_TOKENS` env var)
+
+No manual intervention required after initial setup!
+
+---
+
+### Additional Setup: Google Cloud API Key (Optional)
+
+The `crux_query` and `crux_history` tools require a Google Cloud API key. All other 29 tools work without it.
+
+This configuration is the same for both authentication modes:
 
 The `crux_query` and `crux_history` tools require a Google Cloud API key. All other 29 tools work without it.
 
@@ -46,32 +251,24 @@ The `crux_query` and `crux_history` tools require a Google Cloud API key. All ot
 
 The CrUX API is free with a 150 queries/minute limit. No billing required. Note that CrUX only has data for sites with sufficient traffic (roughly a few thousand monthly visits) — low-traffic sites will return empty results.
 
-### 3. Install
+---
+
+### Installation
 
 ```bash
 npm install -g mcp-server-gsc-pro
 ```
 
-### 4. Configure MCP
+Or run from source:
 
-Add to your project's `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "gsc": {
-      "command": "npx",
-      "args": ["-y", "mcp-server-gsc-pro"],
-      "env": {
-        "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/service-account-key.json",
-        "GOOGLE_CLOUD_API_KEY": "your-api-key-here"
-      }
-    }
-  }
-}
+```bash
+git clone https://github.com/ricardo-nth/mcp-server-gsc.git
+cd mcp-server-gsc
+pnpm install
+pnpm build
 ```
 
-Or run from source:
+### Running from Source
 
 ```json
 {
@@ -80,7 +277,8 @@ Or run from source:
       "command": "node",
       "args": ["/path/to/mcp-server-gsc-pro/dist/index.js"],
       "env": {
-        "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/service-account-key.json",
+        "GOOGLE_AUTH_MODE": "service_account",
+        "GOOGLE_CREDENTIALS_PATH": "/path/to/service-account.json",
         "GOOGLE_CLOUD_API_KEY": "your-api-key-here"
       }
     }
@@ -88,11 +286,20 @@ Or run from source:
 }
 ```
 
-**Setting credentials globally** — if you use the same service account and API key across multiple projects, you can export them in your shell config (e.g. `~/.zshrc` or `~/.bashrc`) instead of repeating them in every `.mcp.json`:
+### Global Environment Variables
+
+If you use the same credentials across multiple projects, you can export them in your shell config (e.g. `~/.zshrc` or `~/.bashrc`):
 
 ```bash
-export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"
+# For Service Account mode
+export GOOGLE_CREDENTIALS_PATH="/path/to/service-account-key.json"
 export GOOGLE_CLOUD_API_KEY="your-api-key-here"
+
+# For OAuth2 mode
+export GOOGLE_AUTH_MODE="oauth2"
+export GOOGLE_CLIENT_ID="xxx.apps.googleusercontent.com"
+export GOOGLE_CLIENT_SECRET="GOCSPX-xxx"
+export GOOGLE_OAUTH2_TOKEN_PATH="/path/to/tokens.json"
 ```
 
 With global exports, your `.mcp.json` simplifies to:
@@ -109,6 +316,8 @@ With global exports, your `.mcp.json` simplifies to:
 ```
 
 > The `env` block in `.mcp.json` takes precedence over shell environment variables, so you can still override per-project if needed.
+
+---
 
 ## Tools (31)
 
@@ -184,9 +393,39 @@ Direct access to related Google APIs.
 
 ## Environment Variables
 
+### Authentication Mode
+
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GOOGLE_APPLICATION_CREDENTIALS` | Yes | Path to service account JSON key file |
+| `GOOGLE_AUTH_MODE` | No | Authentication mode: `service_account` (default) or `oauth2` |
+
+### Service Account Mode
+
+| Variable | Required | Priority | Description |
+|----------|----------|----------|-------------|
+| `GOOGLE_CREDENTIALS` | No | 1 | Service account JSON as string |
+| `GOOGLE_CREDENTIALS_PATH` | No | 2 | Path to service account JSON file |
+| `GOOGLE_APPLICATION_CREDENTIALS` | No | 3 | Path to service account JSON file (backward compatibility) |
+
+> Set **one** of the above variables when using Service Account mode.
+
+### OAuth2 Mode
+
+| Variable | Required | Priority | Description |
+|----------|----------|----------|-------------|
+| `GOOGLE_CLIENT_ID` | Recommended | - | OAuth2 client ID (required for token auto-refresh) |
+| `GOOGLE_CLIENT_SECRET` | Recommended | - | OAuth2 client secret (required for token auto-refresh) |
+| `GOOGLE_OAUTH2_TOKENS` | No | 1 | OAuth2 tokens as JSON string |
+| `GOOGLE_OAUTH2_TOKEN_PATH` | No | 2 | Path to tokens.json file |
+
+> If neither token variable is set, the server searches for `tokens.json` in the current and parent directories.
+> 
+> **Note on Client Credentials**: `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are optional but recommended. Without them, the server can still use existing valid tokens, but automatic token refresh will not work when the access token expires. You'll need to manually update the tokens.
+
+### Optional (Both Modes)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
 | `GOOGLE_CLOUD_API_KEY` | No | Google Cloud API key for CrUX tools only |
 
 ## Development

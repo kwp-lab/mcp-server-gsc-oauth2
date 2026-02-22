@@ -6,7 +6,7 @@ import {
   pagespeedonline_v5,
   chromeuxreport_v1,
 } from 'googleapis';
-import { GoogleAuth } from 'google-auth-library';
+import { GoogleAuth, OAuth2Client } from 'google-auth-library';
 import { withRetry } from './utils/retry.js';
 
 type SearchAnalyticsRequest =
@@ -72,23 +72,57 @@ export class GSCPermissionError extends GSCError {
 // ---------------------------------------------------------------------------
 
 export class SearchConsoleService {
-  private auth: GoogleAuth;
+  private auth?: GoogleAuth;
+  private oauth2Client?: OAuth2Client;
   private apiKey?: string;
+  private authMode: 'service_account' | 'oauth2';
+  public readonly authIdentity: string;
 
-  constructor(credentials: string, apiKey?: string) {
+  constructor(
+    authMode: 'service_account' | 'oauth2',
+    credentialsOrClient: string | OAuth2Client,
+    apiKey?: string,
+    authIdentity?: string,
+  ) {
     this.apiKey = apiKey;
-    this.auth = new google.auth.GoogleAuth({
-      keyFile: credentials,
-      scopes: [
-        'https://www.googleapis.com/auth/webmasters',
-        'https://www.googleapis.com/auth/webmasters.readonly',
-        'https://www.googleapis.com/auth/indexing',
-      ],
-    });
+    this.authMode = authMode;
+
+    if (authMode === 'oauth2') {
+      this.oauth2Client = credentialsOrClient as OAuth2Client;
+      this.authIdentity = authIdentity || 'OAuth2 authorized user';
+    } else {
+      const credentials = credentialsOrClient as string;
+      this.auth = new google.auth.GoogleAuth({
+        keyFile: credentials,
+        scopes: [
+          'https://www.googleapis.com/auth/webmasters',
+          'https://www.googleapis.com/auth/webmasters.readonly',
+          'https://www.googleapis.com/auth/indexing',
+        ],
+      });
+      this.authIdentity = authIdentity || 'Service Account';
+    }
+  }
+
+  getAuthContext() {
+    return {
+      mode: this.authMode,
+      identity: this.authIdentity,
+    };
+  }
+
+  private async getAuthClient() {
+    if (this.oauth2Client) {
+      return this.oauth2Client;
+    }
+    if (this.auth) {
+      return await this.auth.getClient();
+    }
+    throw new GSCAuthError('No authentication client configured');
   }
 
   private async getWebmasters() {
-    const authClient = await this.auth.getClient();
+    const authClient = await this.getAuthClient();
     return google.webmasters({
       version: 'v3',
       auth: authClient,
@@ -96,7 +130,7 @@ export class SearchConsoleService {
   }
 
   private async getSearchConsole() {
-    const authClient = await this.auth.getClient();
+    const authClient = await this.getAuthClient();
     return google.searchconsole({
       version: 'v1',
       auth: authClient,
@@ -104,7 +138,7 @@ export class SearchConsoleService {
   }
 
   private async getIndexing() {
-    const authClient = await this.auth.getClient();
+    const authClient = await this.getAuthClient();
     return google.indexing({
       version: 'v3',
       auth: authClient,

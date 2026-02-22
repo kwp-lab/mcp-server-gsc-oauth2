@@ -9,6 +9,10 @@ import {
 import { z } from 'zod';
 // @ts-ignore — no types shipped
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import { OAuth2Client } from 'google-auth-library';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 import { GSCError, SearchConsoleService } from './service.js';
 import { errorResult } from './utils/types.js';
@@ -85,19 +89,215 @@ import {
 } from './tools/computed2.js';
 
 // ---------------------------------------------------------------------------
-// Environment
+// Environment & Authentication
 // ---------------------------------------------------------------------------
 
-const GOOGLE_APPLICATION_CREDENTIALS = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-if (!GOOGLE_APPLICATION_CREDENTIALS) {
-  console.error(
-    'GOOGLE_APPLICATION_CREDENTIALS environment variable is required',
+// Authentication mode: 'service_account' (default) or 'oauth2'
+const authMode = (process.env.GOOGLE_AUTH_MODE || 'service_account').toLowerCase() as
+  | 'service_account'
+  | 'oauth2';
+
+// Helper function to load Service Account credentials
+function loadCredentials(): { path: string; identity: string } {
+  // Priority 1: GOOGLE_CREDENTIALS (JSON string) - create temp file
+  if (process.env.GOOGLE_CREDENTIALS) {
+    try {
+      const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+      const tempPath = path.join(os.tmpdir(), `gsc-credentials-${Date.now()}.json`);
+      fs.writeFileSync(tempPath, JSON.stringify(credentials));
+      console.error('Loaded credentials from GOOGLE_CREDENTIALS environment variable');
+      return {
+        path: tempPath,
+        identity: credentials.client_email || 'unknown service account',
+      };
+    } catch (error) {
+      console.error(
+        'Warning: Failed to parse GOOGLE_CREDENTIALS environment variable:',
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  // Priority 2: GOOGLE_CREDENTIALS_PATH
+  if (process.env.GOOGLE_CREDENTIALS_PATH) {
+    try {
+      const credentialsPath = path.resolve(process.cwd(), process.env.GOOGLE_CREDENTIALS_PATH);
+      if (fs.existsSync(credentialsPath)) {
+        const fileContent = fs.readFileSync(credentialsPath, 'utf8');
+        const credentials = JSON.parse(fileContent);
+        console.error(`Loaded credentials from: ${credentialsPath}`);
+        return {
+          path: credentialsPath,
+          identity: credentials.client_email || 'unknown service account',
+        };
+      } else {
+        console.error(`Warning: Credentials file not found at: ${credentialsPath}`);
+      }
+    } catch (error) {
+      console.error(
+        'Warning: Failed to read GOOGLE_CREDENTIALS_PATH:',
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  // Priority 3: GOOGLE_APPLICATION_CREDENTIALS (fallback for backward compatibility)
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    try {
+      const credentialsPath = path.resolve(process.cwd(), process.env.GOOGLE_APPLICATION_CREDENTIALS);
+      if (fs.existsSync(credentialsPath)) {
+        const fileContent = fs.readFileSync(credentialsPath, 'utf8');
+        const credentials = JSON.parse(fileContent);
+        console.error(`Loaded credentials from: ${credentialsPath}`);
+        return {
+          path: credentialsPath,
+          identity: credentials.client_email || 'unknown service account',
+        };
+      }
+    } catch (error) {
+      console.error(
+        'Warning: Failed to read GOOGLE_APPLICATION_CREDENTIALS:',
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  throw new Error(
+    'Service Account credentials not found. Please set one of: GOOGLE_CREDENTIALS, GOOGLE_CREDENTIALS_PATH, or GOOGLE_APPLICATION_CREDENTIALS',
   );
-  process.exit(1);
 }
+
+// Helper function to load OAuth2 tokens from tokens.json or environment variable
+function loadTokens(): { tokens: any; path: string | null } {
+  // Priority 1: GOOGLE_OAUTH2_TOKENS (JSON string)
+  if (process.env.GOOGLE_OAUTH2_TOKENS) {
+    try {
+      console.error('Loading tokens from GOOGLE_OAUTH2_TOKENS environment variable');
+      const tokens = JSON.parse(process.env.GOOGLE_OAUTH2_TOKENS);
+      return { tokens, path: null }; // path is null when using env var
+    } catch (error) {
+      console.error(
+        'Warning: Failed to parse GOOGLE_OAUTH2_TOKENS environment variable:',
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  // Priority 2: Search multiple possible paths for tokens.json
+  const possiblePaths = [
+    process.env.GOOGLE_OAUTH2_TOKEN_PATH,
+    path.resolve(process.cwd(), 'tokens.json'),
+    path.resolve(process.cwd(), '../tokens.json'),
+  ].filter((p): p is string => Boolean(p));
+
+  for (const tokensPath of possiblePaths) {
+    if (fs.existsSync(tokensPath)) {
+      try {
+        console.error(`Loading tokens from: ${tokensPath}`);
+        const content = fs.readFileSync(tokensPath, 'utf8');
+        return { tokens: JSON.parse(content), path: tokensPath };
+      } catch (error) {
+        console.error(
+          `Warning: Failed to read tokens from ${tokensPath}:`,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
+  }
+
+  throw new Error(
+    `OAuth2 tokens not found. Set GOOGLE_OAUTH2_TOKENS env var or provide tokens.json. Searched paths: ${possiblePaths.join(', ')}`,
+  );
+}
+
+// Initialize authentication based on mode
+let service: SearchConsoleService;
+let authIdentity: string;
 
 const GOOGLE_CLOUD_API_KEY = process.env.GOOGLE_CLOUD_API_KEY;
 // Optional — only needed for CrUX tools. Server starts fine without it.
+
+if (authMode === 'oauth2') {
+  // OAuth2 mode: Use user authorization tokens
+  console.error('=== OAuth2 Authentication Mode ===');
+
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    console.error(
+      'Warning: GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are not set.',
+    );
+    console.error(
+      'Token auto-refresh will not work. You will need to manually update tokens when they expire.',
+    );
+  }
+
+  const { tokens, path: tokensPath } = loadTokens();
+  const oauth2Client = new OAuth2Client(clientId, clientSecret);
+
+  oauth2Client.setCredentials({
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    expiry_date: tokens.expiry_date,
+    token_type: tokens.token_type,
+    scope: tokens.scope,
+  });
+
+  // Auto-refresh tokens and save to file (if path is available)
+  oauth2Client.on('tokens', (newTokens) => {
+    console.error('OAuth2 tokens refreshed');
+    const updatedTokens = {
+      ...tokens,
+      ...newTokens,
+      expiry_date: newTokens.expiry_date || Date.now() + 3600 * 1000,
+    };
+    // Update in-memory tokens
+    Object.assign(tokens, updatedTokens);
+
+    // Only save to file if we have a file path
+    if (tokensPath) {
+      try {
+        fs.writeFileSync(tokensPath, JSON.stringify(updatedTokens, null, 2));
+        console.error('Tokens saved to file successfully');
+      } catch (error) {
+        console.error(
+          'Warning: Failed to save tokens to file:',
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    } else {
+      console.error('Tokens updated in memory (no file path available for persistence)');
+    }
+  });
+
+  authIdentity = 'OAuth2 authorized user';
+  service = new SearchConsoleService('oauth2', oauth2Client, GOOGLE_CLOUD_API_KEY, authIdentity);
+  console.error(`Authenticated as: ${authIdentity}`);
+} else {
+  // Service Account mode (default)
+  console.error('=== Service Account Authentication Mode ===');
+
+  const { path: credentialsPath, identity } = loadCredentials();
+  authIdentity = identity;
+
+  service = new SearchConsoleService(
+    'service_account',
+    credentialsPath,
+    GOOGLE_CLOUD_API_KEY,
+    authIdentity,
+  );
+  console.error(`Authenticated as: ${authIdentity}`);
+}
+
+if (GOOGLE_CLOUD_API_KEY) {
+  console.error('CrUX API Key: configured (crux_query and crux_history tools available)');
+} else {
+  console.error(
+    'CrUX API Key: not configured (crux_query and crux_history tools will not work)',
+  );
+}
+console.error('===================================');
 
 // ---------------------------------------------------------------------------
 // Server
@@ -305,7 +505,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
-  const service = new SearchConsoleService(GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_CLOUD_API_KEY);
 
   try {
     if (!args && name !== 'list_sites') {
