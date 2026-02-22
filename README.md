@@ -1,6 +1,13 @@
-# mcp-server-gsc-pro
+# mcp-server-gsc-oauth2
 
-Enhanced MCP server for Google Search Console. 31 tools spanning raw API access, computed intelligence, and adjacent Google APIs — designed for AI agents that do SEO work.
+Enhanced MCP server for Google Search Console with **dual authentication support**. This is a fork of [mcp-server-gsc-pro](https://github.com/ricardo-nth/mcp-server-gsc) that adds:
+
+- 🔐 **OAuth2 User Authorization** — Access Search Console with user credentials, no service account setup needed
+- 🔄 **Automatic Token Refresh** — OAuth2 tokens are automatically refreshed when expired
+- 🎯 **Flexible Credential Loading** — Support for environment variables (JSON strings) or file paths for both auth modes
+- ↔️ **Backward Compatible** — All existing Service Account configurations continue to work
+
+The server provides 31 tools spanning raw API access, computed intelligence, and adjacent Google APIs — designed for AI agents that do SEO work.
 
 ## Who this is for
 
@@ -8,7 +15,9 @@ Teams and individuals using AI coding agents (Claude Code, Cursor, etc.) for SEO
 
 ## What it does
 
-Wraps the full Google Search Console API surface into MCP tools, then adds a layer of computed intelligence that combines multiple API calls into higher-level insights. Also integrates PageSpeed Insights, Google Indexing API, Chrome UX Report (CrUX), and mobile-friendly testing.
+This server wraps the full Google Search Console API surface into MCP tools, with added computed intelligence that combines multiple API calls into higher-level insights. It also integrates PageSpeed Insights, Google Indexing API, Chrome UX Report (CrUX), and mobile-friendly testing.
+
+**Dual Authentication** — Choose between Service Account (server-to-server) or OAuth2 (user authorization) modes. OAuth2 tokens auto-refresh, and credentials can be loaded from environment variables or files.
 
 **Raw API access** — search analytics with filtering, URL inspection, sitemaps CRUD, sites CRUD.
 
